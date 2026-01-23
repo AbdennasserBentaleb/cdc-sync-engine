@@ -1,0 +1,34 @@
+{
+  "type": "record",
+  "name": "OrderCdcEvent",
+  "namespace": "com.portfolio.cdc.avro",
+  "fields": [
+    {
+      "name": "op",
+      "type": "string"
+    },
+    {
+      "name": "before",
+      "type": [
+        "null",
+        {
+          "type": "record",
+          "name": "OrderRecord",
+          "fields": [
+            {"name": "id", "type": ["null", "int"]},
+            {"name": "customer_id", "type": ["null", "string"]},
+            {"name": "total_amount", "type": ["null", "string"]},
+            {"name": "status", "type": ["null", "string"]},
+            {"name": "created_at", "type": ["null", "long"]}
+          ]
+        }
+      ],
+      "default": null
+    },
+    {
+      "name": "after",
+      "type": ["null", "OrderRecord"],
+      "default": null
+    }
+  ]
+}
