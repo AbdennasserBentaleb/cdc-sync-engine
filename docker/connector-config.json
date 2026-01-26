@@ -1,0 +1,18 @@
+{
+  "name": "orders-connector",
+  "config": {
+    "connector.class": "io.debezium.connector.postgresql.PostgresConnector",
+    "tasks.max": "1",
+    "database.hostname": "postgres",
+    "database.port": "5432",
+    "database.user": "postgres",
+    "database.password": "postgres",
+    "database.dbname": "cdc_demo",
+    "topic.prefix": "dbserver1",
+    "schema.include.list": "public",
+    "table.include.list": "public.orders",
+    "plugin.name": "pgoutput",
+    "decimal.handling.mode": "string",
+    "time.precision.mode": "connect"
+  }
+}
