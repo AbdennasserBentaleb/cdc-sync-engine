@@ -1,0 +1,25 @@
+spring:
+  application:
+    name: cdc-sync-engine-test
+  
+  # Enable SQL initialization for Testcontainers
+  sql:
+    init:
+      mode: always
+  
+  jpa:
+    hibernate:
+      ddl-auto: none
+    show-sql: true
+
+  kafka:
+    consumer:
+      group-id: cdc-test-group
+      auto-offset-reset: earliest
+
+  elasticsearch:
+    uris: http://localhost:9200
+
+cdc:
+  topic:
+    order: dbserver1.public.orders
