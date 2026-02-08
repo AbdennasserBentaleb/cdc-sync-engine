@@ -62,7 +62,7 @@ services:
       - connect
     volumes:
       - ./connector-config.json:/connector-config.json
-    command: >
+    command: |
       sh -c "
         echo 'Waiting for Kafka Connect to start listening on localhost (port 8083) ⏳'
         while [ $$(curl -s -o /dev/null -w %{http_code} http://connect:8083/connectors) -ne 200 ] ; do
@@ -70,8 +70,24 @@ services:
           sleep 5
         done
         echo 'Kafka Connect is ready. Registering Postgres Connector...'
-        curl -X POST http://connect:8083/connectors \
-          -H 'Content-Type: application/json' \
-          -d @/connector-config.json
+        curl -s -X POST http://connect:8083/connectors -H "Content-Type: application/json" -d @/connector-config.json
         echo 'Connector registered successfully.'
       "
+
+  app:
+    build:
+      context: ../
+      dockerfile: Dockerfile
+    ports:
+      - "8080:8080"
+    environment:
+      - SPRING_KAFKA_BOOTSTRAP_SERVERS=kafka:29092
+      - SPRING_ELASTICSEARCH_URIS=http://elasticsearch:9200
+      - SPRING_DATASOURCE_URL=jdbc:postgresql://postgres:5432/cdc_demo
+      - SPRING_DATASOURCE_USERNAME=postgres
+      - SPRING_DATASOURCE_PASSWORD=postgres
+    depends_on:
+      - kafka
+      - postgres
+      - elasticsearch
+      - connect

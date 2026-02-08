@@ -36,35 +36,21 @@ The infrastructure stack is orchestrated via Docker Compose.
 
 ```bash
 cd docker
-docker compose up -d
+docker compose up -d --build
 ```
-*This provisions Zookeeper, Kafka, Postgres (WAL enabled), Kafka Connect, and a single-node Elasticsearch cluster.*
+*This automatically provisions Zookeeper, Kafka, Postgres (WAL enabled), Kafka Connect, Elasticsearch, the CDC Sync Engine (`app`), and safely registers the Debezium connector in the background.*
 
-### 2. Register the Debezium Connector
-
-Wait approximately 30-60 seconds for the Kafka Connect REST API to become available (`localhost:8083`), then register the PostgreSQL connector from the host machine:
-
+You can view the logs of the sync engine via:
 ```bash
-curl -X POST http://localhost:8083/connectors \
-  -H "Content-Type: application/json" \
-  -d @docker/connector-config.json
-```
-*(Note: If running in a Kubernetes environment or remote host, ensure port 8083 is forwarded or accessible before making this POST request.)*
-
-### 3. Start the Synchronization Daemon
-
-Initialize the Spring Boot consumer application. The daemon interfaces with Kafka on `localhost:9092`, Elasticsearch on `localhost:9200`, and PostgreSQL on `localhost:5433` by default.
-
-```bash
-mvn spring-boot:run
+docker compose logs -f app
 ```
 
-### 4. Boot the Vue 3 Dashboard
+### 2. Boot the Vue 3 Dashboard
 
 To visualize the end-to-end synchronization out-of-the-box, initialize the Vue frontend:
 
 ```bash
-cd ui
+cd ../ui
 npm install
 npm run dev
 ```
@@ -88,6 +74,17 @@ Verify via the Elasticsearch API:
 ```bash
 curl http://localhost:9200/orders_index/_search?pretty
 ```
+
+## API Documentation
+
+The Spring Boot application exposes testing endpoints to easily interact with the pipeline:
+
+- `GET /api/orders/source` - Fetch all orders directly from the PostgreSQL source.
+- `GET /api/orders/index` - Fetch all synchronized documents from the Elasticsearch read-model.
+- `POST /api/orders` - Create a new order in PostgreSQL (triggers Debezium CDC sync). 
+  - *Example payload:* `{"customerId": "CUST-001", "totalAmount": 150.00, "status": "PENDING"}`
+- `PUT /api/orders/{id}` - Update an existing order.
+- `DELETE /api/orders/{id}` - Delete an order and propagate the tombstone event.
 
 ## Engineering Notes
 
