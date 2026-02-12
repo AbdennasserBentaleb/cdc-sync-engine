@@ -28,6 +28,9 @@ Detailed technical design decisions and requirements are documented in the [Arch
 - **PostgreSQL 15**
 - **Vue 3** & **Vite** (Frontend UI)
 
+> [!TIP]
+> This project includes a **Maven Wrapper**. You do not need to install Maven manually. Use `.\mvnw.cmd` on Windows or `./mvnw` on Linux/macOS to run build commands.
+
 ## Local Development
 
 The infrastructure stack is orchestrated via Docker Compose.
@@ -36,21 +39,39 @@ The infrastructure stack is orchestrated via Docker Compose.
 
 ```bash
 cd docker
-docker compose up -d --build
+docker compose up -d
 ```
-*This automatically provisions Zookeeper, Kafka, Postgres (WAL enabled), Kafka Connect, Elasticsearch, the CDC Sync Engine (`app`), and safely registers the Debezium connector in the background.*
+*This provisions Zookeeper, Kafka, Postgres (WAL enabled), Kafka Connect, and a single-node Elasticsearch cluster.*
 
-You can view the logs of the sync engine via:
+### 2. Register the Debezium Connector
+
+Wait approximately 30-60 seconds for the Kafka Connect REST API to become available (`localhost:8083`), then register the PostgreSQL connector from the host machine:
+
 ```bash
-docker compose logs -f app
+curl -X POST http://localhost:8083/connectors \
+  -H "Content-Type: application/json" \
+  -d @docker/connector-config.json
+```
+*(Note: If running in a Kubernetes environment or remote host, ensure port 8083 is forwarded or accessible before making this POST request.)*
+
+### 3. Start the Synchronization Daemon
+
+Initialize the Spring Boot consumer application. The daemon interfaces with Kafka on `localhost:9092`, Elasticsearch on `localhost:9200`, and PostgreSQL on `localhost:5433` by default.
+
+```bash
+# On Windows:
+.\mvnw.cmd spring-boot:run
+
+# On Linux/macOS:
+./mvnw spring-boot:run
 ```
 
-### 2. Boot the Vue 3 Dashboard
+### 4. Boot the Vue 3 Dashboard
 
 To visualize the end-to-end synchronization out-of-the-box, initialize the Vue frontend:
 
 ```bash
-cd ../ui
+cd ui
 npm install
 npm run dev
 ```
@@ -75,17 +96,6 @@ Verify via the Elasticsearch API:
 curl http://localhost:9200/orders_index/_search?pretty
 ```
 
-## API Documentation
-
-The Spring Boot application exposes testing endpoints to easily interact with the pipeline:
-
-- `GET /api/orders/source` - Fetch all orders directly from the PostgreSQL source.
-- `GET /api/orders/index` - Fetch all synchronized documents from the Elasticsearch read-model.
-- `POST /api/orders` - Create a new order in PostgreSQL (triggers Debezium CDC sync). 
-  - *Example payload:* `{"customerId": "CUST-001", "totalAmount": 150.00, "status": "PENDING"}`
-- `PUT /api/orders/{id}` - Update an existing order.
-- `DELETE /api/orders/{id}` - Delete an order and propagate the tombstone event.
-
 ## Engineering Notes
 
 Proper serialization configurations within Kafka Connect are essential for JVM consumers to cleanly map Postgres types to Elasticsearch entities.
@@ -93,10 +103,29 @@ Proper serialization configurations within Kafka Connect are essential for JVM c
 - **Numerics**: Setting `decimal.handling.mode=string` prevents Debezium from wrapping `DECIMAL` types in base64 binary arrays, enabling native JSON mapping.
 - **Timestamps**: Setting `time.precision.mode=connect` coerces Postgres microsecond timestamp offsets into standardized epoch milliseconds, cleanly resolving to `java.time.Instant`.
 
+### 1. Build and Test the Application
+To build and verify the application, use the **Maven Wrapper** included in the root directory. This ensures the correct Java version and dependencies are used without requiring a local Maven installation.
+
+- **On Windows (CMD/PowerShell):**
+  ```powershell
+  .\mvnw.cmd clean install
+  .\mvnw.cmd spring-boot:run
+  ```
+
+- **On Windows (Git Bash / MINGW64) or Linux/macOS:**
+  ```bash
+  ./mvnw clean install
+  ./mvnw spring-boot:run
+  ```
+
 ## Testing
 
 Integration configurations utilize Testcontainers to ensure isolated behavior across the consumer's parsing boundaries.
 
 ```bash
-mvn test
+# On Windows:
+.\mvnw.cmd test
+
+# On Linux/macOS:
+./mvnw test
 ```

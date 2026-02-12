@@ -7,6 +7,11 @@ services:
       - "2181:2181"
       - "2888:2888"
       - "3888:3888"
+    healthcheck:
+      test: ["CMD", "/zookeeper/bin/zkServer.sh", "status"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   kafka:
     image: quay.io/debezium/kafka:2.5
@@ -19,7 +24,13 @@ services:
       - KAFKA_LISTENER_SECURITY_PROTOCOL_MAP=LISTENER_DOCKER_INTERNAL:PLAINTEXT,LISTENER_DOCKER_EXTERNAL:PLAINTEXT
       - KAFKA_INTER_BROKER_LISTENER_NAME=LISTENER_DOCKER_INTERNAL
     depends_on:
-      - zookeeper
+      zookeeper:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "/kafka/bin/kafka-topics.sh", "--bootstrap-server", "localhost:9092", "--list"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   postgres:
     image: quay.io/debezium/postgres:15
@@ -31,6 +42,11 @@ services:
       - POSTGRES_DB=cdc_demo
     volumes:
       - ./init.sql:/docker-entrypoint-initdb.d/init.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U postgres -d cdc_demo"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   connect:
     image: quay.io/debezium/connect:2.5
@@ -43,8 +59,15 @@ services:
       - OFFSET_STORAGE_TOPIC=my_connect_offsets
       - STATUS_STORAGE_TOPIC=my_connect_statuses
     depends_on:
-      - kafka
-      - postgres
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8083/connectors"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.12.0
@@ -55,11 +78,17 @@ services:
     ports:
       - "9200:9200"
       - "9300:9300"
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -vq '\"status\":\"red\"'"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
 
   connector-setup:
     image: curlimages/curl:latest
     depends_on:
-      - connect
+      connect:
+        condition: service_healthy
     volumes:
       - ./connector-config.json:/connector-config.json
     command: |
@@ -87,7 +116,11 @@ services:
       - SPRING_DATASOURCE_USERNAME=postgres
       - SPRING_DATASOURCE_PASSWORD=postgres
     depends_on:
-      - kafka
-      - postgres
-      - elasticsearch
-      - connect
+      kafka:
+        condition: service_healthy
+      postgres:
+        condition: service_healthy
+      elasticsearch:
+        condition: service_healthy
+      connect:
+        condition: service_healthy
