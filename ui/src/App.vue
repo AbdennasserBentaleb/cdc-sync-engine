@@ -6,13 +6,16 @@ const API_BASE = 'http://localhost:8080/api/orders'
 const sourceRecords = ref([])
 const indexRecords = ref([])
 const newOrder = ref({ customerId: '', totalAmount: '', status: 'CREATED' })
+const connectionError = ref(false)
 
 const fetchSource = async () => {
   try {
     const res = await fetch(`${API_BASE}/source`)
     sourceRecords.value = await res.json()
+    connectionError.value = false
   } catch (err) {
     console.error('Failed to fetch source:', err)
+    connectionError.value = true
   }
 }
 
@@ -89,6 +92,11 @@ onMounted(() => {
       <h1>CDC Sync Engine</h1>
       <p>Real-time data synchronization via Debezium and Kafka</p>
     </header>
+
+    <div v-if="connectionError" class="error-banner">
+      <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="12" y1="8" x2="12" y2="12"></line><line x1="12" y1="16" x2="12.01" y2="16"></line></svg>
+      <strong>Backend Unreachable:</strong> Could not connect to the API at <code>{{ API_BASE }}</code>. Ensure the Docker stack is running and port 8080 is open.
+    </div>
 
     <div class="dashboard-grid">
       <!-- Left Pane: Postgres Source -->

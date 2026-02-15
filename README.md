@@ -35,23 +35,6 @@ Detailed technical design decisions and requirements are documented in the [Arch
 
 The infrastructure stack is orchestrated via Docker Compose.
 
-### 1. Boot the Infrastructure
-
-```bash
-cd docker
-docker compose up -d
-```
-*This provisions Zookeeper, Kafka, Postgres (WAL enabled), Kafka Connect, and a single-node Elasticsearch cluster.*
-
-### 2. Register the Debezium Connector
-
-Wait approximately 30-60 seconds for the Kafka Connect REST API to become available (`localhost:8083`), then register the PostgreSQL connector from the host machine:
-
-```bash
-curl -X POST http://localhost:8083/connectors \
-  -H "Content-Type: application/json" \
-  -d @docker/connector-config.json
-```
 *(Note: If running in a Kubernetes environment or remote host, ensure port 8083 is forwarded or accessible before making this POST request.)*
 
 ### 3. Start the Synchronization Daemon
