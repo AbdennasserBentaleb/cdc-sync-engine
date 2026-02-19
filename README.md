@@ -1,114 +1,78 @@
-# CDC Sync Engine
+# 🚀 CDC Sync Engine
 
-A Change Data Capture (CDC) synchronization mechanism using Debezium, Apache Kafka, and Elasticsearch.
+A Change Data Capture (CDC) synchronization mechanism using **Debezium**, **Apache Kafka**, and **Elasticsearch**.
 
-This project implements the extraction of row-level mutations from a PostgreSQL Write-Ahead Log (WAL) to incrementally synchronize a downstream Elasticsearch read-model. It demonstrates a common pattern for decoupling search/analytics workloads from the primary transactional database without introducing synchronous dual-writes.
+This project demonstrates how to incrementally synchronize a downstream Elasticsearch read-model from a PostgreSQL source without synchronous dual-writes.
 
-## System Architecture
+## 🏗 System Architecture
 
-The pipeline utilizes **Debezium** to ingest the Postgres WAL, capturing `INSERT`, `UPDATE`, and `DELETE` events from the source database.
+The pipeline utilizes **Debezium** to ingest the Postgres WAL, publishing events to **Kafka**. A **Spring Boot** consumer then applies these changes to **Elasticsearch**.
 
-These events are published via Kafka Connect to an **Apache Kafka** topic. A **Spring Boot** consumer application reads the Debezium schema envelope and applies corresponding upsert/delete operations to the **Elasticsearch** cluster.
+Detailed technical design: [Architecture Docs](docs/ARCHITECTURE.md) | [PRD](docs/PRD.md)
 
-Detailed technical design decisions and requirements are documented in the [Architecture](docs/ARCHITECTURE.md) and [PRD](docs/PRD.md) documents.
+---
 
-## Architecture Decisions & Trade-offs
+## 🛠 Quick Start (How to Run)
 
-* **Eventual Consistency over Strong Consistency:** By utilizing Kafka as an asynchronous buffer, the system accepts an eventual consistency model for the Elasticsearch read node. While this prevents the search index from directly impacting the latency of the primary Postgres transactions, the read model may lag slightly behind the source of truth, typically resolving within hundreds of milliseconds under normal load.
-* **Complex Schema Evolution:** Utilizing Debezium means structural changes to the PostgreSQL schema (DDL operations) must be carefully coordinated with the consumer application. The Spring consumer expects a specific payload shape, making breaking schema changes high-risk without strict versioning strategies.
-* **JVM Garbage Collection Pauses:** The Spring Boot consumer runs on the Java Virtual Machine. While Java 21 generational ZGC offers low latency, intermittent GC pauses could potentially delay message processing from the Kafka partitions, affecting end-to-end sync time during high-throughput burst scenarios.
-* **Tombstone Handling Strategy:** Rather than maintaining a complex state machine for deletions, the system utilizes Debezium's explicit `op="d"` (delete) envelope to trigger Elasticsearch document eviction. Null-payload (tombstone) events, typically emitted by Debezium to signal Kafka log compaction, are safely ignored by the consumer to prevent duplicate processing logic.
+Follow these 4 steps to get the engine running.
 
-## Technology Stack
-
-- **Java 21** & **Spring Boot 3.2.4**
-- **Apache Kafka** (Debezium distribution 2.5)
-- **Debezium PostgreSQL Connector 2.5**
-- **Elasticsearch 8.12.0**
-- **PostgreSQL 15**
-- **Vue 3** & **Vite** (Frontend UI)
-
-> [!TIP]
-> This project includes a **Maven Wrapper**. You do not need to install Maven manually. Use `.\mvnw.cmd` on Windows or `./mvnw` on Linux/macOS to run build commands.
-
-## Local Development
-
-The infrastructure stack is orchestrated via Docker Compose.
-
-*(Note: If running in a Kubernetes environment or remote host, ensure port 8083 is forwarded or accessible before making this POST request.)*
-
-### 3. Start the Synchronization Daemon
-
-Initialize the Spring Boot consumer application. The daemon interfaces with Kafka on `localhost:9092`, Elasticsearch on `localhost:9200`, and PostgreSQL on `localhost:5433` by default.
-
+### Step 1: Pre-requisites & Build
+Ensure you have Docker and Java 21 installed.
 ```bash
-# On Windows:
-.\mvnw.cmd spring-boot:run
+# Windows
+.\mvnw.cmd clean install
 
-# On Linux/macOS:
-./mvnw spring-boot:run
+# Linux / MacOS
+./mvnw clean install
 ```
 
-### 4. Boot the Vue 3 Dashboard
+### Step 2: Start Infrastructure (Docker)
+Starts Postgres, Kafka, Elasticsearch, and the Sync App.
+```bash
+cd docker
+docker compose up -d --build
+```
+> [!IMPORTANT]
+> The `connector-setup` container is an automated task that registers the Debezium connector. It will show as **Exited (0)** once successful.
 
-To visualize the end-to-end synchronization out-of-the-box, initialize the Vue frontend:
-
+### Step 3: Run the Dashboard
+Open a new terminal and start the UI:
 ```bash
 cd ui
 npm install
 npm run dev
 ```
+- **URL**: [http://localhost:5173/](http://localhost:5173/)
 
-Navigate to `http://localhost:5173`. Any transactions against the PostgreSQL source are synchronized to the Elasticsearch read-model.
-
-### 5. Alternative CLI Testing
-
-You can also trigger changes manually via `psql`:
-
+### Step 4: Verify Synchronization
+Confirm the data pipeline is active:
 ```bash
-# Connect to Postgres
-docker exec -it <postgres-container-id> psql -U postgres -d cdc_demo
-
-# Insert a new order
-INSERT INTO orders (customer_id, total_amount, status) VALUES ('CUST-010', 299.99, 'PENDING');
+curl http://localhost:8083/connectors
 ```
+**Expected Output**: `["orders-connector"]`
 
-Verify via the Elasticsearch API:
+> [!TIP]
+> **Manual Registration (Fallback)**: If the command above returns `[]`, manually register the connector:
+> ```bash
+> curl -X POST http://localhost:8083/connectors -H "Content-Type: application/json" -d @docker/connector-config.json
+> ```
 
-```bash
-curl http://localhost:9200/orders_index/_search?pretty
-```
+---
 
-## Engineering Notes
+## 📝 Troubleshooting
 
-Proper serialization configurations within Kafka Connect are essential for JVM consumers to cleanly map Postgres types to Elasticsearch entities.
+### "Backend Unreachable" in UI
+1. **Check Port 8080**: Ensure no other service is using port 8080.
+2. **Rebuild**: Run `docker compose up -d --build app`.
 
-- **Numerics**: Setting `decimal.handling.mode=string` prevents Debezium from wrapping `DECIMAL` types in base64 binary arrays, enabling native JSON mapping.
-- **Timestamps**: Setting `time.precision.mode=connect` coerces Postgres microsecond timestamp offsets into standardized epoch milliseconds, cleanly resolving to `java.time.Instant`.
+### Data Not Syncing
+1. **Check Status**: `curl http://localhost:8083/connectors/orders-connector/status`.
+2. **Setup Logs**: `docker logs docker-connector-setup-1`.
 
-### 1. Build and Test the Application
-To build and verify the application, use the **Maven Wrapper** included in the root directory. This ensures the correct Java version and dependencies are used without requiring a local Maven installation.
+---
 
-- **On Windows (CMD/PowerShell):**
-  ```powershell
-  .\mvnw.cmd clean install
-  .\mvnw.cmd spring-boot:run
-  ```
+## 🧪 Engineering Notes
 
-- **On Windows (Git Bash / MINGW64) or Linux/macOS:**
-  ```bash
-  ./mvnw clean install
-  ./mvnw spring-boot:run
-  ```
-
-## Testing
-
-Integration configurations utilize Testcontainers to ensure isolated behavior across the consumer's parsing boundaries.
-
-```bash
-# On Windows:
-.\mvnw.cmd test
-
-# On Linux/macOS:
-./mvnw test
-```
+* **Numerics**: Uses `decimal.handling.mode=string` for native JSON mapping.
+* **Timestamps**: Uses `time.precision.mode=connect` for standardized epoch millis.
+* **Testing**: Run integration tests with Testcontainers via `.\mvnw.cmd test`.

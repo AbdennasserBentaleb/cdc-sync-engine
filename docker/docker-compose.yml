@@ -93,14 +93,21 @@ services:
       - ./connector-config.json:/connector-config.json
     command: |
       sh -c "
-        echo 'Waiting for Kafka Connect to start listening on localhost (port 8083) ⏳'
-        while [ $$(curl -s -o /dev/null -w %{http_code} http://connect:8083/connectors) -ne 200 ] ; do
-          echo -e '\e[1A\e[KWaiting for Kafka Connect to start listening on connect (port 8083) ⏳'
-          sleep 5
-        done
+        echo 'Waiting for Kafka Connect (port 8083) ⏳'
+        until curl -s -o /dev/null -w %{http_code} http://connect:8083/connectors | grep -q '200'; do sleep 5; done
+        
         echo 'Kafka Connect is ready. Registering Postgres Connector...'
-        curl -s -X POST http://connect:8083/connectors -H "Content-Type: application/json" -d @/connector-config.json
-        echo 'Connector registered successfully.'
+        RESPONSE=$$(curl -s -X POST http://connect:8083/connectors -H 'Content-Type: application/json' -d @/connector-config.json -w '\nHTTP_STATUS:%{http_code}')
+        
+        echo \"$$RESPONSE\"
+        
+        if echo \"$$RESPONSE\" | grep -q -E 'HTTP_STATUS:201|HTTP_STATUS:409'; then
+          echo '✅ Connector registered successfully (or already exists).'
+          exit 0
+        else
+          echo '❌ Connector registration failed.'
+          exit 1
+        fi
       "
 
   app:
