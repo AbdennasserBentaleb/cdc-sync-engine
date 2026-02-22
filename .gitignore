@@ -6,3 +6,10 @@ target/
 .idea/
 *.iml
 
+
+# Enterprise / OS overrides
+.DS_Store
+.idea/
+.vscode/
+*.iml
+*.log
